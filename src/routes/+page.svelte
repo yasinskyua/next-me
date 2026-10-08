@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import Pledge from '#lib/Pledge.svelte';
+	import Route from '#lib/Route.svelte';
 	import { auth, signOut } from '#lib/auth.svelte.js';
 	import { INTRO, PLAN, SCALE, STATEMENT, SWOT, matrixKey, partStatus } from '#lib/plan.js';
-	import type { Answers, Field } from '#lib/plan.js';
-	import { loadAnswers, supabase } from '#lib/supabase.js';
+	import type { Answers, Field, Part, Step } from '#lib/plan.js';
+	import { loadAnswers, saveAnswers } from '#lib/supabase.js';
 
 	let answers = $state<Answers>({});
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -35,9 +37,7 @@
 		status = 'saving';
 		while (saved < edits) {
 			const version = edits;
-			const { error } = await supabase
-				.from('plans')
-				.upsert({ user_id: auth.session.user.id, answers: $state.snapshot(answers) });
+			const { error } = await saveAnswers(auth.session.user.id, $state.snapshot(answers));
 			if (error) {
 				status = 'error';
 				problem = error.message;
@@ -64,31 +64,55 @@
 
 	const unsaved = () => status === 'saving' || status === 'error';
 
-	// Зміст: розділи з якорями і скільки в кожному заповнено
-	const parts = PLAN.flatMap((step) => step.parts.map((part) => ({ step, part, id: `part-${part.num ?? step.n}` })));
-	type TocPart = (typeof parts)[number];
-	let hideDone = $state(false);
+	// --- Орієнтація: розділи з якорями, статус заповнення, де ти зараз ---
+	const partId = (step: Step, part: Part) => `part-${part.num ?? step.n}`;
+	const parts = PLAN.flatMap((step) => step.parts.map((part) => ({ step, part, id: partId(step, part) })));
+	const stepStatus = (step: Step) =>
+		step.parts.reduce(
+			(a, p) => {
+				const s = partStatus(p, answers);
+				return { done: a.done + s.done, total: a.total + s.total };
+			},
+			{ done: 0, total: 0 }
+		);
 
-	const title = (p: TocPart) => `${p.part.num ? `${p.part.num}. ` : ''}${p.part.title}`;
-	const complete = (p: TocPart) => {
-		const s = partStatus(p.part, answers);
-		return s.done === s.total;
-	};
-	const badge = (p: TocPart) => {
-		const s = partStatus(p.part, answers);
-		return s.done === s.total ? '✓' : `${s.done}/${s.total}`;
-	};
-	const total = parts.reduce((n, p) => n + partStatus(p.part, {}).total, 0);
-	const done = $derived(parts.reduce((n, p) => n + partStatus(p.part, answers).done, 0));
-	const firstEmpty = $derived(parts.find((p) => !complete(p)));
+	let current = $state(parts[0].id);
+	const here = $derived(parts.find((p) => p.id === current) ?? parts[0]);
+	let rail = $state<HTMLElement>();
+	let frame = 0;
 
-	function jump(e: Event & { currentTarget: HTMLSelectElement }) {
-		document.getElementById(e.currentTarget.value)?.scrollIntoView();
-		e.currentTarget.value = '';
+	// Поточний розділ — останній, чий заголовок уже під шапкою
+	function spy() {
+		let id = parts[0].id;
+		for (const p of parts) {
+			const el = document.getElementById(p.id);
+			if (!el || el.getBoundingClientRect().top > 160) break;
+			id = p.id;
+		}
+		if (id === current) return;
+		current = id;
+		// Тримаємо поточний розділ у полі зору змісту
+		const item = rail?.querySelector<HTMLElement>(`[data-part="${id}"]`);
+		if (rail && item && (item.offsetTop < rail.scrollTop || item.offsetTop + item.offsetHeight > rail.scrollTop + rail.clientHeight))
+			rail.scrollTop = item.offsetTop - rail.clientHeight / 3;
 	}
+
+	// Бланк з'являється після завантаження, тож до якоря з адреси (/#step-2 з план-карти) доводимо самі
+	function arrived() {
+		if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+		spy();
+	}
+
+	const onscroll = () => {
+		cancelAnimationFrame(frame);
+		frame = requestAnimationFrame(spy);
+	};
+
+	// На телефоні зміст — спливна панель: після переходу ховаємо її
+	const closeRail = () => rail?.matches(':popover-open') && rail.hidePopover();
 </script>
 
-<svelte:window onbeforeunload={(e) => unsaved() && e.preventDefault()} />
+<svelte:window onbeforeunload={(e) => unsaved() && e.preventDefault()} {onscroll} />
 <!-- На телефоні вкладку можуть вивантажити без beforeunload: зберігаємо, щойно вона ховається -->
 <svelte:document onvisibilitychange={() => document.hidden && saved < edits && save()} />
 
@@ -97,72 +121,81 @@
 </svelte:head>
 
 <header>
-	<span class="who">{auth.session?.user.email}</span>
+	<a class="brand" href="#top">План перемоги</a>
+	<button type="button" class="where" popovertarget="rail">
+		<span class="where-n">{here.part.num ?? here.step.n}</span>
+		{here.part.title}
+	</button>
 	<span role="status" class={['status', status]}>
 		{#if status === 'saving'}Зберігаю…{:else if status === 'saved'}Збережено{:else if status === 'error'}Не збережено{/if}
 	</span>
 	{#if status === 'error'}
-		<button type="button" onclick={save}>Повторити</button>
+		<button type="button" class="link" onclick={save}>Повторити</button>
 	{/if}
-	<a href={resolve('/map')} onclick={toMap}>План-карта</a>
-	<button type="button" onclick={async () => (await flush()) && signOut()}>Вийти</button>
+	<a class="link" href={resolve('/map')} onclick={toMap}>План-карта</a>
+	<button type="button" class="link" title={auth.session?.user.email} onclick={async () => (await flush()) && signOut()}>Вийти</button>
 </header>
 
-<div class="layout">
-	<aside>
-		{#await loading then}
-			<p class="total">Заповнено <b>{done}</b> з {total}</p>
-			<progress value={done} max={total}></progress>
-			{#if firstEmpty}
-				<a class="next" href="#{firstEmpty.id}">Перший незаповнений: {title(firstEmpty)}</a>
-			{:else}
-				<p class="next">Усе заповнено ✓</p>
+{#await loading}
+	<p class="boot">Завантаження…</p>
+{:then}
+	<section class="hero" id="top">
+		<div class="hero-in">
+			<div>
+				<Pledge {answers} />
+				<a class="edit" href="#part-2.1">Змінити заяву</a>
+			</div>
+			<Route {answers} startDate={answers.start_date} />
+		</div>
+	</section>
+
+	<div class="body">
+		<nav id="rail" class="rail" popover aria-label="Кроки й розділи" bind:this={rail}>
+			<ol class="trail">
+				{#each PLAN as step (step.n)}
+					{@const st = stepStatus(step)}
+					<li>
+						<a class={['leg', { on: here.step === step }]} href="#step-{step.n}" onclick={closeRail}>
+							<span class="pie big" style:--p={st.done / st.total}></span>
+							<span class="leg-n">{step.n}</span>
+							<span class="leg-t">{step.title}</span>
+						</a>
+						<ol>
+							{#each step.parts as part (part.title)}
+								{@const s = partStatus(part, answers)}
+								{@const id = partId(step, part)}
+								<li>
+									<a href="#{id}" data-part={id} aria-current={current === id ? 'location' : undefined} onclick={closeRail}>
+										<span class="pie" style:--p={s.done / s.total}></span>
+										<span class="part-t">{part.num ? `${part.num} ` : ''}{part.title}</span>
+										<span class="count">{s.done}/{s.total}</span>
+									</a>
+								</li>
+							{/each}
+						</ol>
+					</li>
+				{/each}
+			</ol>
+			<p class="summit">№1</p>
+		</nav>
+
+		<main>
+			{#if status === 'error'}
+				<p role="alert">Не вдалося зберегти: {problem}. Відповіді лишаються на сторінці, натисни «Повторити».</p>
 			{/if}
+			<p class="intro">{INTRO}</p>
 
-			<label class="hide"><input type="checkbox" bind:checked={hideDone} /> Сховати заповнені</label>
-			<ul class="toc">
+			<form oninput={edited} onsubmit={(e) => e.preventDefault()} {@attach arrived}>
 				{#each PLAN as step (step.n)}
-					{@const visible = parts.filter((p) => p.step === step && !(hideDone && complete(p)))}
-					{#if visible.length}
-						<li class="step">Крок {step.n}. {step.title}</li>
-						{#each visible as p (p.id)}
-							<li>
-								<a href="#{p.id}">
-									<span>{title(p)}</span>
-									<span class={['badge', { ok: complete(p) }]}>{badge(p)}</span>
-								</a>
-							</li>
-						{/each}
-					{/if}
-				{/each}
-			</ul>
-
-			<select class="mobile" aria-label="Перейти до розділу" onchange={jump}>
-				<option value="">Перейти до розділу…</option>
-				{#each parts as p (p.id)}
-					<option value={p.id}>{badge(p)} · {title(p)}</option>
-				{/each}
-			</select>
-		{/await}
-	</aside>
-
-	<main>
-		<h1>План перемоги</h1>
-		<p>{INTRO}</p>
-
-		{#if status === 'error'}
-			<p role="alert">Не вдалося зберегти: {problem}. Відповіді лишаються на сторінці, натисни «Повторити».</p>
-		{/if}
-
-		{#await loading}
-			<p>Завантаження…</p>
-		{:then}
-			<form oninput={edited} onsubmit={(e) => e.preventDefault()}>
-				{#each PLAN as step (step.n)}
-					<section id="step-{step.n}">
-						<h2>Крок {step.n}. {step.title}</h2>
+					<section class="step" id="step-{step.n}">
+						<h2><span class="sn">{step.n}</span>{step.title}</h2>
 						{#each step.parts as part (part.title)}
-							<h3 id="part-{part.num ?? step.n}">{part.num ? `${part.num}. ` : ''}{part.title}</h3>
+							{@const s = partStatus(part, answers)}
+							<h3 id={partId(step, part)}>
+								{#if part.num}<span class="pn">{part.num}</span>{/if}
+								{part.title}
+								<span class="pc">{s.done} з {s.total}</span>
+							</h3>
 							{#each part.fields as f (f.type === 'note' ? f.text : f.id)}
 								{@render field(f)}
 							{/each}
@@ -170,70 +203,82 @@
 					</section>
 				{/each}
 			</form>
-		{:catch error}
-			<p role="alert">Не вдалося завантажити бланк: {error.message}</p>
-		{/await}
-	</main>
-</div>
+
+			<a class="to-map" href={resolve('/map')} onclick={toMap}>Переглянути план-карту</a>
+		</main>
+	</div>
+{:catch error}
+	<main><p role="alert">Не вдалося завантажити бланк: {error.message}</p></main>
+{/await}
 
 {#snippet field(f: Field)}
 	{#if f.type === 'note'}
 		<p class="note">{f.text}</p>
 	{:else if f.type === 'text'}
-		<label class="q" for={f.id}>{f.label}</label>
-		<textarea id={f.id} rows={f.rows} bind:value={answers[f.id]}></textarea>
+		<div class="row">
+			<label class="q" for={f.id}>{f.label}</label>
+			<textarea id={f.id} class="answer" rows={f.rows} bind:value={answers[f.id]}></textarea>
+		</div>
 	{:else if f.type === 'date'}
-		<label class="q" for={f.id}>{f.label}</label>
-		<input id={f.id} type="date" bind:value={answers[f.id]} />
+		<div class="row">
+			<label class="q" for={f.id}>{f.label}</label>
+			<input id={f.id} class="answer date" type="date" bind:value={answers[f.id]} />
+		</div>
 	{:else if f.type === 'choice'}
-		<fieldset>
-			<legend class="q">{f.label}</legend>
-			{#each f.options as option (option)}
-				<label class="option">
-					<input type="radio" name={f.id} value={option} bind:group={answers[f.id]} />
-					{option}
-				</label>
-			{/each}
-		</fieldset>
-	{:else if f.type === 'checklist'}
-		<fieldset>
-			<legend class="q">{f.label}</legend>
-			{#each f.options as option (option)}
-				<label class="option">
-					<input type="checkbox" value={option} bind:group={answers[f.id]} />
-					{option}
-				</label>
-			{/each}
-		</fieldset>
-	{:else if f.type === 'top3' || f.type === 'todo'}
-		<fieldset>
-			<legend class="q">{f.label}</legend>
-			<ol>
-				<!-- Пункти — це позиції 1…n, тож ключ — номер -->
-				{#each answers[f.id] as _, i (i)}
-					<li><input aria-label="{f.label}: {i + 1}" bind:value={answers[f.id][i]} /></li>
-				{/each}
-			</ol>
-		</fieldset>
-	{:else if f.type === 'swot'}
-		<fieldset>
-			<legend class="q">{f.label}</legend>
-			<div class="swot">
-				{#each Object.entries(SWOT) as [key, name] (key)}
-					<label>{name}<textarea rows="4" bind:value={answers[f.id][key]}></textarea></label>
+		<div class="row" role="radiogroup" aria-labelledby="q-{f.id}">
+			<p class="q" id="q-{f.id}">{f.label}</p>
+			<div class="options inline">
+				{#each f.options as option (option)}
+					<label class="option">
+						<input type="radio" name={f.id} value={option} bind:group={answers[f.id]} />
+						{option}
+					</label>
 				{/each}
 			</div>
-		</fieldset>
+		</div>
+	{:else if f.type === 'checklist'}
+		<div class="row" role="group" aria-labelledby="q-{f.id}">
+			<p class="q" id="q-{f.id}">{f.label}</p>
+			<div class="options">
+				{#each f.options as option (option)}
+					<label class="option">
+						<input type="checkbox" value={option} bind:group={answers[f.id]} />
+						{option}
+					</label>
+				{/each}
+			</div>
+		</div>
+	{:else if f.type === 'top3' || f.type === 'todo'}
+		<div class="row" role="group" aria-labelledby="q-{f.id}">
+			<p class="q" id="q-{f.id}">{f.label}</p>
+			<ol class="list">
+				<!-- Пункти — це позиції 1…n, тож ключ — номер -->
+				{#each answers[f.id] as _, i (i)}
+					<li><input class="answer" aria-label="{f.label}: {i + 1}" bind:value={answers[f.id][i]} /></li>
+				{/each}
+			</ol>
+		</div>
+	{:else if f.type === 'swot'}
+		<div class="row wide" role="group" aria-labelledby="q-{f.id}">
+			<p class="q" id="q-{f.id}">{f.label}</p>
+			<div class="swot">
+				{#each Object.entries(SWOT) as [key, name] (key)}
+					<label>{name}<textarea class="answer" rows="4" bind:value={answers[f.id][key]}></textarea></label>
+				{/each}
+			</div>
+		</div>
 	{:else if f.type === 'statement'}
-		<fieldset class="statement">
-			<legend class="q">{f.label}</legend>
-			<label>{STATEMENT.name}<input bind:value={answers[f.id].name} /></label>
-			<label>{STATEMENT.date}<input type="date" bind:value={answers[f.id].date} /></label>
-			<label>{STATEMENT.domain}<input bind:value={answers[f.id].domain} /></label>
-		</fieldset>
+		<div class="row wide" role="group" aria-labelledby="q-{f.id}">
+			<p class="q" id="q-{f.id}">{f.label}</p>
+			<p class="say">
+				Я, <input class="answer name" aria-label={STATEMENT.name} placeholder="ім’я, прізвище" bind:value={answers[f.id].name} />,
+				хочу до <input class="answer date" type="date" aria-label={STATEMENT.date} bind:value={answers[f.id].date} />
+				стати №1 в <input class="answer domain" aria-label={STATEMENT.domain} placeholder="своїй справі" bind:value={answers[f.id].domain} />
+			</p>
+		</div>
 	{:else if f.type === 'matrix'}
-		<fieldset>
-			<legend class="q">{f.label}</legend>
+		<div class="row wide" role="group" aria-labelledby="q-{f.id}">
+			<p class="q" id="q-{f.id}">{f.label}</p>
 			<table>
 				<thead>
 					<tr>
@@ -254,13 +299,13 @@
 								<th scope="row">{item}</th>
 								<td><input type="checkbox" aria-label="{item}: важливо" bind:checked={row.on} /></td>
 								<td>
-									<select aria-label="{item}: {f.scale}" bind:value={row.score}>
+									<select class="cell" aria-label="{item}: {f.scale}" bind:value={row.score}>
 										<option value=""></option>
 										{#each ['1', '2', '3', '4', '5'] as n (n)}<option>{n}</option>{/each}
 									</select>
 								</td>
 								<td>
-									<select aria-label="{item}: пріоритет" bind:value={row.prio}>
+									<select class="cell" aria-label="{item}: пріоритет" bind:value={row.prio}>
 										<option value=""></option>
 										{#each SCALE.priority as p (p)}<option>{p}</option>{/each}
 									</select>
@@ -270,218 +315,445 @@
 					</tbody>
 				{/each}
 			</table>
-		</fieldset>
+		</div>
 	{/if}
 {/snippet}
 
 <style>
+	/* --- Шапка --- */
 	header {
 		position: sticky;
 		top: 0;
-		z-index: 1;
+		z-index: 3;
 		display: flex;
-		gap: 12px;
+		gap: 24px;
 		align-items: center;
-		padding: 8px 16px;
-		background: Canvas;
-		border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+		box-sizing: border-box;
+		height: var(--header);
+		padding: 0 24px;
+		background: var(--bg);
+		border-bottom: 1px solid var(--hairline);
+		font-size: 0.9375rem;
 	}
-	.who {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		opacity: 0.7;
+	.brand {
+		margin-right: auto;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		text-decoration: none;
 	}
 	.status {
-		font-size: 0.875rem;
-		opacity: 0.7;
+		color: var(--muted);
 	}
 	.status.error {
-		color: #c62828;
-		opacity: 1;
+		color: var(--flag);
 	}
-	.layout {
+	header .link {
+		text-decoration: none;
+	}
+	.where {
+		display: none;
+	}
+	.boot {
+		padding: 40px 24px;
+		color: var(--muted);
+	}
+
+	/* --- Заява на кобальтовій плашці + маршрут --- */
+	.hero {
+		background: var(--hero);
+		color: var(--on-hero);
+	}
+	.hero-in {
 		display: grid;
-		grid-template-columns: 16rem minmax(0, 40rem);
+		grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+		gap: 56px;
+		align-items: end;
+		max-width: 76rem;
+		margin: 0 auto;
+		padding: 64px 24px 48px;
+	}
+	.edit {
+		display: inline-block;
+		margin-top: 28px;
+		font-weight: 500;
+	}
+
+	/* --- Зміст-маршрут і стрічка бланка --- */
+	.body {
+		display: grid;
+		grid-template-columns: 17rem minmax(0, 52rem);
 		justify-content: center;
-		gap: 40px;
-		padding: 0 16px;
+		gap: 56px;
+		padding: 0 24px;
 	}
-	.layout main {
+	.body main {
 		margin: 0;
-		padding: 32px 0 64px;
+		padding: 48px 0 120px;
 	}
-	aside {
-		position: sticky;
-		top: 56px;
-		align-self: start;
-		max-height: calc(100vh - 56px);
-		overflow-y: auto;
-		padding: 32px 0 16px;
+
+	.rail {
+		color: var(--fg);
+		font-size: 0.9375rem;
 	}
-	.total {
-		margin: 0 0 4px;
-	}
-	progress {
-		width: 100%;
-	}
-	.next {
-		display: block;
-		margin: 8px 0;
-		font-size: 0.875rem;
-	}
-	.hide {
-		display: flex;
-		gap: 6px;
-		margin: 12px 0;
-		font-size: 0.875rem;
-	}
-	.toc {
+	.trail,
+	.trail ol {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 	}
-	.toc li + li {
-		margin-top: 0;
+	/* Стежка: вертикальна лінія крізь кружечки */
+	.trail {
+		position: relative;
 	}
-	.step {
-		margin: 16px 0 4px;
-		font-size: 0.75rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		opacity: 0.6;
+	.trail::before {
+		content: '';
+		position: absolute;
+		top: 10px;
+		bottom: 0;
+		left: 8px;
+		border-left: 2px dashed var(--hairline);
 	}
-	.toc a {
+	.rail a {
+		position: relative;
 		display: flex;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 4px 8px;
-		border-radius: 6px;
+		gap: 10px;
+		align-items: center;
+		padding: 4px 6px 4px 0;
 		color: inherit;
-		font-size: 0.9375rem;
 		text-decoration: none;
 	}
-	.toc a:hover {
-		background: color-mix(in srgb, CanvasText 8%, transparent);
+	.rail a:hover .part-t,
+	.rail a:hover .leg-t {
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
-	.badge {
+	.leg {
+		margin-top: 18px;
+		font-weight: 800;
+		font-size: 1.0625rem;
+		letter-spacing: -0.01em;
+	}
+	.trail > li:first-child .leg {
+		margin-top: 0;
+	}
+	.leg-n {
+		color: var(--answer);
+	}
+	/* Кружечок-пиріг: частка заповненого */
+	.pie {
 		flex: none;
-		font-size: 0.8125rem;
-		opacity: 0.6;
+		box-sizing: border-box;
+		width: 12px;
+		height: 12px;
+		margin-left: 3px;
+		border: 2px solid var(--accent);
+		border-radius: 50%;
+		background: conic-gradient(var(--accent) calc(var(--p) * 360deg), var(--bg) 0);
 	}
-	.badge.ok {
-		color: #2e7d32;
-		opacity: 1;
+	.pie.big {
+		width: 18px;
+		height: 18px;
+		margin-left: 0;
 	}
-	.mobile {
-		display: none;
-		width: 100%;
-	}
-	@media (max-width: 800px) {
-		.layout {
-			grid-template-columns: minmax(0, 1fr);
-			gap: 0;
-		}
-		aside {
-			position: static;
-			max-height: none;
-			padding-bottom: 0;
-		}
-		.toc,
-		.hide {
-			display: none;
-		}
-		.mobile {
-			display: block;
-		}
-	}
-	section,
-	h3 {
-		scroll-margin-top: 56px;
-	}
-	h2 {
-		margin-top: 48px;
-	}
-	.q {
-		display: block;
-		margin: 20px 0 6px;
-		font-weight: 600;
-	}
-	fieldset {
-		border: 0;
-		margin: 0;
-		padding: 0;
+	.part-t {
+		flex: 1;
 		min-width: 0;
 	}
-	legend {
-		padding: 0;
+	.count {
+		color: var(--muted);
+		font-size: 0.8125rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.rail a[aria-current] {
+		font-weight: 600;
+	}
+	.rail a[aria-current] .part-t {
+		color: var(--answer);
+	}
+	.rail a[aria-current]::after {
+		content: '';
+		position: absolute;
+		inset: 0 0 0 -8px;
+		z-index: -1;
+		background: var(--field);
+	}
+	.summit {
+		position: relative;
+		margin: 16px 0 0;
+		padding-left: 26px;
+		font-weight: 800;
+		font-size: 1.25rem;
+	}
+	.summit::before {
+		content: '';
+		position: absolute;
+		left: 4px;
+		top: 4px;
+		border: 7px solid transparent;
+		border-left: 12px solid var(--flag);
+	}
+
+	/* Стрічка: великий номер кроку, розділ під товстою лінією, питання | відповідь */
+	.intro {
+		margin: 0;
+		color: var(--muted);
+	}
+	.step {
+		margin-top: 96px;
+	}
+	.step:first-child {
+		margin-top: 56px;
+	}
+	h2 {
+		display: flex;
+		gap: 20px;
+		align-items: baseline;
+		font-size: 2.75rem;
+	}
+	.sn {
+		color: var(--accent);
+		font-size: 7.5rem;
+		line-height: 0.75;
+		letter-spacing: -0.08em;
+	}
+	h3 {
+		display: flex;
+		gap: 12px;
+		align-items: baseline;
+		margin-top: 56px;
+		padding-top: 14px;
+		border-top: 3px solid var(--fg);
+		font-size: 1.5rem;
+	}
+	.pn {
+		font-weight: 300;
+	}
+	.pc {
+		margin-left: auto;
+		color: var(--muted);
+		font-size: 0.875rem;
+		font-weight: 400;
+		letter-spacing: 0;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.step,
+	h3 {
+		scroll-margin-top: calc(var(--header) + 24px);
+	}
+	.row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+		gap: 10px 32px;
+		padding: 16px 0;
+		border-top: 1px solid var(--hairline);
+	}
+	h3 + .row {
+		border-top: 0;
+	}
+	.row.wide {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.q {
+		margin: 0;
+		font-weight: 500;
+	}
+	.options {
+		display: grid;
+		gap: 6px;
+	}
+	.options.inline {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px 28px;
 	}
 	.option {
 		display: flex;
-		gap: 8px;
-		align-items: baseline;
-		padding: 2px 0;
+		gap: 10px;
+		align-items: center;
+		cursor: pointer;
 	}
-	textarea,
-	input:not([type='radio'], [type='checkbox']),
-	select {
-		box-sizing: border-box;
-		font: inherit;
+	.date {
+		width: auto;
 	}
-	textarea,
-	input:not([type='radio'], [type='checkbox']) {
-		width: 100%;
-		padding: 6px 8px;
-	}
-	textarea {
-		resize: vertical;
-	}
-	ol {
+	.list {
+		display: grid;
+		gap: 6px;
 		margin: 0;
-		padding-left: 1.5em;
+		padding-left: 1.4em;
 	}
-	li + li {
-		margin-top: 6px;
+	.list ::marker {
+		color: var(--muted);
+		font-weight: 500;
 	}
 	.swot {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-		gap: 12px;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 16px 24px;
 	}
-	.statement {
+	.swot label {
 		display: grid;
-		gap: 8px;
+		gap: 6px;
+		font-weight: 600;
+	}
+	.say {
+		margin: 0;
+		font-size: 1.5rem;
+		font-weight: 800;
+		line-height: 2.1;
+		letter-spacing: -0.02em;
+	}
+	.say .answer {
+		display: inline-block;
+		width: 9em;
+		font-size: 1.125rem;
+		letter-spacing: 0;
+	}
+	.say .domain {
+		width: 14em;
+	}
+	.say .date {
+		width: auto;
 	}
 	.note {
-		padding: 8px 12px;
-		border-left: 3px solid color-mix(in srgb, CanvasText 30%, transparent);
-		opacity: 0.8;
+		margin: 0;
+		padding: 0 0 16px;
+		color: var(--muted);
 	}
 	table {
 		width: 100%;
 		border-collapse: collapse;
+		font-size: 0.9375rem;
 	}
 	th,
 	td {
-		padding: 4px 6px;
+		padding: 6px 8px;
 		text-align: center;
-		border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+		border-bottom: 1px solid var(--hairline);
 	}
-	th[scope='row'],
-	.group {
+	th[scope='row'] {
 		text-align: left;
-		font-weight: normal;
+		font-weight: 300;
 	}
 	.group {
+		padding-top: 20px;
+		text-align: left;
 		font-weight: 600;
-		padding-top: 16px;
 	}
 	thead th {
+		vertical-align: bottom;
+		color: var(--muted);
 		font-size: 0.8125rem;
-		font-weight: normal;
-		opacity: 0.7;
+		font-weight: 400;
+	}
+	.cell {
+		padding: 4px 6px;
+		border: 0;
+		background: var(--field);
+		color: var(--answer);
+		font: 500 0.9375rem/1.3 var(--font);
+	}
+	.to-map {
+		display: inline-block;
+		margin-top: 72px;
+		padding: 14px 22px;
+		background: var(--answer);
+		color: var(--bg);
+		font-weight: 500;
+		text-decoration: none;
+	}
+
+	/* --- Великий екран: зміст закріплений ліворуч --- */
+	@media (min-width: 901px) {
+		.rail {
+			/* inset спершу: він скидає top, який задає popover за замовчуванням */
+			inset: auto;
+			position: sticky;
+			top: var(--header);
+			display: block;
+			align-self: start;
+			box-sizing: border-box;
+			width: auto;
+			height: auto;
+			max-height: calc(100vh - var(--header));
+			margin: 0;
+			padding: 48px 8px 32px 0;
+			overflow-y: auto;
+			border: 0;
+			background: none;
+		}
+	}
+
+	/* --- Телефон: зміст — спливна панель з кнопки «де я» --- */
+	@media (max-width: 900px) {
+		header {
+			gap: 16px;
+			padding: 0 16px;
+		}
+		.brand,
+		.status {
+			display: none;
+		}
+		.where {
+			display: flex;
+			flex: 1;
+			gap: 8px;
+			align-items: baseline;
+			min-width: 0;
+			padding: 6px 0;
+			border: 0;
+			background: none;
+			color: inherit;
+			font: 600 0.9375rem/1.2 var(--font);
+			text-align: left;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			cursor: pointer;
+		}
+		.where-n {
+			color: var(--answer);
+			font-weight: 800;
+		}
+		.where::after {
+			content: '▾';
+			color: var(--muted);
+		}
+		.rail {
+			position: fixed;
+			inset: var(--header) 0 0 0;
+			width: auto;
+			height: auto;
+			margin: 0;
+			padding: 24px 16px 48px;
+			overflow-y: auto;
+			border: 0;
+			background: var(--bg);
+		}
+		.hero-in {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 32px;
+			padding: 40px 16px 32px;
+		}
+		.body {
+			grid-template-columns: minmax(0, 1fr);
+			padding: 0 16px;
+		}
+		.body main {
+			padding-top: 32px;
+		}
+		.row,
+		.swot {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		h2 {
+			font-size: 2rem;
+		}
+		.sn {
+			font-size: 5rem;
+		}
+		h3 {
+			font-size: 1.25rem;
+		}
 	}
 </style>

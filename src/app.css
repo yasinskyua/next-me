@@ -1,0 +1,147 @@
+/* Постер на теплому камені: білий аркуш, світло-сіра кам'яна плашка із заявою, майже чорний текст.
+   Помаранчевий — твій голос і рух: яскравий (--accent) для позначок і ліній,
+   темніший (--answer) для тексту відповідей і кнопок, щоб читався. Один шрифт, Geologica. */
+:root {
+	--bg: #ffffff;
+	--fg: #201d19;
+	/* Плашка із заявою і маршрутом */
+	--hero: #ebe7e0;
+	--on-hero: #201d19;
+	--accent: #e8692c;
+	--answer: #b94d14;
+	--field: #fcf1ea;
+	--hairline: #e8e4dd;
+	--muted: #6f6a63;
+	--flag: #e8692c;
+
+	--font: 'Geologica', system-ui, sans-serif;
+	--header: 56px;
+
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #171513;
+		--fg: #ece7df;
+		--hero: #2a2622;
+		--on-hero: #f1ece4;
+		--accent: #f08a4b;
+		--answer: #f5a06a;
+		--field: #2a211b;
+		--hairline: #34302b;
+		--muted: #a39d94;
+		--flag: #f08a4b;
+		color-scheme: dark;
+	}
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--fg);
+	font: 300 1.0625rem/1.55 var(--font);
+	-webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+	margin: 0;
+	font-weight: 800;
+	line-height: 1;
+	letter-spacing: -0.03em;
+}
+
+b,
+strong {
+	font-weight: 600;
+}
+
+a {
+	color: inherit;
+	text-underline-offset: 3px;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+main {
+	box-sizing: border-box;
+	max-width: 52rem;
+	margin: 0 auto;
+	padding: 40px 24px 96px;
+}
+
+/* Кнопки: головна — темним помаранчевим, решта — як посилання */
+.btn {
+	padding: 12px 20px;
+	border: 0;
+	background: var(--answer);
+	color: var(--bg);
+	font: 500 1rem/1.2 var(--font);
+	text-decoration: none;
+	cursor: pointer;
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.link {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: 500 0.9375rem/1.2 var(--font);
+	cursor: pointer;
+}
+.link:hover {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+/* Твоя відповідь: помаранчевим на світлій теплій плашці */
+.answer {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: 0;
+	background: var(--field);
+	color: var(--answer);
+	font: 500 1rem/1.5 var(--font);
+}
+textarea.answer {
+	display: block;
+	resize: vertical;
+}
+.answer::placeholder {
+	color: var(--muted);
+	font-weight: 300;
+}
+
+/* Перемикачі й галочки — квадрати сітки */
+input[type='radio'],
+input[type='checkbox'] {
+	appearance: none;
+	flex: none;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	border: 2px solid var(--fg);
+	background: transparent;
+	cursor: pointer;
+	vertical-align: -2px;
+}
+input[type='radio']:checked,
+input[type='checkbox']:checked {
+	border-color: var(--accent);
+	background: var(--accent);
+}
+
+[role='alert'] {
+	color: var(--flag);
+	font-weight: 500;
+}

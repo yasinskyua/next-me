@@ -201,3 +201,7 @@ export function partStatus(part: Part, answers: Answers) {
 	const questions = part.fields.filter((f) => f.type !== 'note');
 	return { done: questions.filter((f) => some(answers[f.id])).length, total: questions.length };
 }
+
+// «2026-11-01» → «1 листопада 2026 р.»
+export const formatDay = (d: string) =>
+	new Date(`${d}T00:00`).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });

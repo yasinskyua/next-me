@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import Pledge from '#lib/Pledge.svelte';
+	import Route from '#lib/Route.svelte';
+	import { formatDay } from '#lib/plan.js';
 	import type { Answers } from '#lib/plan.js';
 	import { loadAnswers } from '#lib/supabase.js';
 
@@ -12,16 +15,6 @@
 
 	const txt = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 	const list = (v: unknown) => (Array.isArray(v) ? v.map(txt).filter(Boolean) : []);
-	const day = (d: string) =>
-		new Date(`${d}T00:00`).toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
-
-	function goal(a: Answers) {
-		const s = [a.stmt2, a.stmt].find((s) => txt(s.name) || txt(s.date) || txt(s.domain));
-		if (!s) return '';
-		const name = txt(s.name);
-		const domain = txt(s.domain);
-		return `Я${name ? `, ${name},` : ''} хочу${s.date ? ` до ${day(s.date)}` : ''} стати №1${domain ? ` в ${domain}` : ''}.`;
-	}
 
 	// Пункти таблиці з пріоритетом A, спершу найменш розвинені
 	const priorityA = (m: Answers) =>
@@ -68,100 +61,209 @@
 	<title>План-карта · Next Me</title>
 </svelte:head>
 
-<main>
-	<nav class="bar">
-		<a href={resolve('/')}>← Бланк</a>
-		<button type="button" onclick={() => window.print()}>Друкувати</button>
-	</nav>
+<header>
+	<a class="brand" href={resolve('/')}>План перемоги</a>
+	<a class="link" href={resolve('/')}>До бланка</a>
+	<button type="button" class="link" onclick={() => window.print()}>Друкувати</button>
+</header>
 
-	<h1>План-карта</h1>
+{#await loading}
+	<p class="boot">Завантаження…</p>
+{:then a}
+	<section class="hero">
+		<div class="hero-in">
+			<div>
+				<Pledge answers={a} />
+				{#if txt(a.goal)}<p class="goal">{txt(a.goal)}</p>{/if}
+				{#if a.started === 'так'}
+					<p class="start">Уже на шляху до №1.</p>
+				{:else if a.start_date}
+					<p class="start">Старт {formatDay(a.start_date)}</p>
+				{/if}
+			</div>
+			<div class="route"><Route answers={a} startDate={a.start_date} /></div>
+		</div>
+	</section>
 
-	{#await loading}
-		<p>Завантаження…</p>
-	{:then a}
-		{@const statement = goal(a)}
-		<section>
-			<h2>Мета</h2>
-			{#if statement}<p class="goal">{statement}</p>{/if}
-			{#if txt(a.goal)}<p class="text">{txt(a.goal)}</p>{/if}
-			{#if a.started === 'так'}
-				<p>Уже на шляху до №1.</p>
-			{:else if a.start_date}
-				<p>Старт: <b>{day(a.start_date)}</b>.</p>
-			{/if}
-			{#if !statement && !txt(a.goal)}{@render empty(1)}{/if}
-		</section>
-
+	<main>
 		{#each sections(a) as s (s.step)}
-			<section>
-				<h2>{s.title}</h2>
+			<section class="step">
+				<h2><span class="sn">{s.step}</span>{s.title}</h2>
 				{#each s.blocks as b (b.title)}
-					<h3>{b.title}</h3>
-					{#if b.tags?.length}<p class="tags">{b.tags.join(' · ')}</p>{/if}
-					{#if b.text}<p class="text">{b.text}</p>{/if}
-					{#if b.items?.length}
-						<ul>
-							<!-- Пункти можуть повторюватися, тож ключ — позиція -->
-							{#each b.items as item, i (i)}<li>{item}</li>{/each}
-						</ul>
-					{/if}
+					<div class="row">
+						<h3>{b.title}</h3>
+						<div>
+							{#if b.tags?.length}<p class="tags">{b.tags.join(', ')}</p>{/if}
+							{#if b.text}<p class="text">{b.text}</p>{/if}
+							{#if b.items?.length}
+								<ul>
+									<!-- Пункти можуть повторюватися, тож ключ — позиція -->
+									{#each b.items as item, i (i)}<li>{item}</li>{/each}
+								</ul>
+							{/if}
+						</div>
+					</div>
 				{:else}
-					{@render empty(s.step)}
+					<p class="empty">Ще порожньо. <a href="{resolve('/')}#step-{s.step}">Заповнити крок {s.step}</a></p>
 				{/each}
 			</section>
 		{/each}
-	{:catch error}
-		<p role="alert">Не вдалося завантажити план: {error.message}</p>
-	{/await}
-</main>
-
-{#snippet empty(step: number)}
-	<p class="empty">Ще порожньо. <a href="{resolve('/')}#step-{step}">Заповнити крок {step}</a></p>
-{/snippet}
+	</main>
+{:catch error}
+	<main><p role="alert">Не вдалося завантажити план: {error.message}</p></main>
+{/await}
 
 <style>
-	.bar {
+	header {
 		display: flex;
-		justify-content: space-between;
+		gap: 24px;
 		align-items: center;
+		box-sizing: border-box;
+		height: var(--header);
+		padding: 0 24px;
+		border-bottom: 1px solid var(--hairline);
+		font-size: 0.9375rem;
 	}
-	h2 {
-		margin-top: 40px;
-		padding-bottom: 4px;
-		border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+	.brand {
+		margin-right: auto;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		text-decoration: none;
 	}
-	h3 {
-		margin: 20px 0 4px;
-		font-size: 1rem;
+	header .link {
+		text-decoration: none;
+	}
+	.boot {
+		padding: 40px 24px;
+		color: var(--muted);
+	}
+
+	.hero {
+		background: var(--hero);
+		color: var(--on-hero);
+	}
+	.hero-in {
+		display: grid;
+		grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+		gap: 56px;
+		align-items: end;
+		max-width: 76rem;
+		margin: 0 auto;
+		padding: 64px 24px 48px;
 	}
 	.goal {
-		font-size: 1.375rem;
-		font-weight: 600;
-		line-height: 1.35;
+		max-width: 34em;
+		margin: 28px 0 0;
+		font-size: 1.25rem;
+		font-weight: 400;
+	}
+	.start {
+		margin: 16px 0 0;
+		font-weight: 500;
+	}
+
+	main {
+		max-width: 60rem;
+	}
+	.step {
+		margin-top: 72px;
+	}
+	.step:first-child {
+		margin-top: 24px;
+	}
+	h2 {
+		display: flex;
+		gap: 20px;
+		align-items: baseline;
+		padding-bottom: 16px;
+		border-bottom: 3px solid var(--fg);
+		font-size: 2.75rem;
+	}
+	.sn {
+		color: var(--accent);
+		font-size: 7.5rem;
+		line-height: 0.75;
+		letter-spacing: -0.08em;
+	}
+	.row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+		gap: 8px 32px;
+		padding: 16px 0;
+		border-bottom: 1px solid var(--hairline);
+	}
+	h3 {
+		font-size: 1.0625rem;
+		font-weight: 500;
+		line-height: 1.4;
+		letter-spacing: 0;
+	}
+	.tags {
+		margin: 0 0 6px;
+		color: var(--muted);
+		font-size: 0.9375rem;
 	}
 	.text {
 		margin: 0;
+		color: var(--answer);
+		font-weight: 500;
 		white-space: pre-line;
-	}
-	.tags {
-		margin: 0 0 4px;
-		font-size: 0.875rem;
-		opacity: 0.7;
 	}
 	ul {
 		margin: 0;
-		padding-left: 1.25em;
+		padding-left: 1.2em;
+		color: var(--answer);
+		font-weight: 500;
+	}
+	li + li {
+		margin-top: 4px;
 	}
 	.empty {
-		opacity: 0.6;
+		margin: 16px 0 0;
+		color: var(--muted);
 	}
+
+	@media (max-width: 900px) {
+		.hero-in {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 32px;
+			padding: 40px 16px 32px;
+		}
+		.row {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		h2 {
+			font-size: 2rem;
+		}
+		.sn {
+			font-size: 5rem;
+		}
+	}
+
+	/* Друк: без шапки, маршруту й фону; заява — чорним */
 	@media print {
-		.bar,
+		header,
+		.route,
 		.empty {
 			display: none;
 		}
+		.hero {
+			background: none;
+			color: #000;
+		}
+		.hero-in {
+			display: block;
+			padding: 0 24px;
+		}
+		.text,
+		ul {
+			color: #000;
+		}
 		h2 {
 			break-after: avoid;
+		}
+		.row {
+			break-inside: avoid;
 		}
 	}
 </style>

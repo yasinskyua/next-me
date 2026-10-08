@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import '../app.css';
 	import favicon from '#lib/assets/favicon.svg';
 	import { auth } from '#lib/auth.svelte.js';
 	import type { LayoutProps } from './$types';
@@ -29,18 +30,10 @@
 {/if}
 
 <style>
-	:global(body) {
-		margin: 0;
-		font: 16px/1.55 system-ui, -apple-system, 'Segoe UI', sans-serif;
-	}
-	:global(main) {
-		max-width: 40rem;
-		margin: 0 auto;
-		padding: 32px 16px;
-	}
 	.boot {
+		padding: 40px 16px;
 		text-align: center;
-		padding: 32px 16px;
-		opacity: 0.6;
+		color: var(--muted);
+		font-family: var(--font);
 	}
 </style>
