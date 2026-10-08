@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import Pledge from '#lib/Pledge.svelte';
 	import Route from '#lib/Route.svelte';
+	import ThemeToggle from '#lib/ThemeToggle.svelte';
 	import { formatDay } from '#lib/plan.js';
 	import type { Answers } from '#lib/plan.js';
 	import { loadAnswers } from '#lib/supabase.js';
@@ -65,6 +66,7 @@
 	<a class="brand" href={resolve('/')}>План перемоги</a>
 	<a class="link" href={resolve('/')}>До бланка</a>
 	<button type="button" class="link" onclick={() => window.print()}>Друкувати</button>
+	<ThemeToggle />
 </header>
 
 {#await loading}

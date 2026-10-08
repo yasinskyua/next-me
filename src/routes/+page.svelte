@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import Pledge from '#lib/Pledge.svelte';
 	import Route from '#lib/Route.svelte';
+	import ThemeToggle from '#lib/ThemeToggle.svelte';
 	import { auth, signOut } from '#lib/auth.svelte.js';
 	import { INTRO, PLAN, SCALE, STATEMENT, SWOT, matrixKey, partStatus } from '#lib/plan.js';
 	import type { Answers, Field, Part, Step } from '#lib/plan.js';
@@ -138,6 +139,7 @@
 		<button type="button" class="link" onclick={save}>Повторити</button>
 	{/if}
 	<a class="link" href={resolve('/map')} onclick={toMap}>План-карта</a>
+	<ThemeToggle />
 	<button type="button" class="link" title={auth.session?.user.email} onclick={async () => (await flush()) && signOut()}>Вийти</button>
 </header>
 

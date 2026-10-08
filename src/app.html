@@ -4,6 +4,13 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<!-- Обрана тема до першого кадру, щоб сторінка не блимала іншою -->
+		<script>
+			try {
+				const theme = localStorage.getItem('theme');
+				if (theme) document.documentElement.dataset.theme = theme;
+			} catch {}
+		</script>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 		<link

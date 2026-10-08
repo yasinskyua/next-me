@@ -1,38 +1,36 @@
 /* Постер на теплому камені: білий аркуш, світло-сіра кам'яна плашка із заявою, майже чорний текст.
    Помаранчевий — твій голос і рух: яскравий (--accent) для позначок і ліній,
    темніший (--answer) для тексту відповідей і кнопок, щоб читався. Один шрифт, Geologica. */
+/* Кожен колір — пара light-dark(світла, темна). Тему обирає color-scheme:
+   за замовчуванням як у системі, перемикач у шапці фіксує світлу чи темну (data-theme на <html>). */
 :root {
-	--bg: #ffffff;
-	--fg: #201d19;
+	color-scheme: light dark;
+
+	--bg: light-dark(#ffffff, #171513);
+	--fg: light-dark(#201d19, #ece7df);
 	/* Плашка із заявою і маршрутом */
-	--hero: #ebe7e0;
-	--on-hero: #201d19;
-	--accent: #e8692c;
-	--answer: #b94d14;
-	--field: #fcf1ea;
-	--hairline: #e8e4dd;
-	--muted: #6f6a63;
-	--flag: #e8692c;
+	--hero: light-dark(#ebe7e0, #2a2622);
+	--on-hero: light-dark(#201d19, #f1ece4);
+	--accent: light-dark(#e8692c, #f08a4b);
+	--answer: light-dark(#b94d14, #f5a06a);
+	--field: light-dark(#fcf1ea, #2a211b);
+	--hairline: light-dark(#e8e4dd, #34302b);
+	--muted: light-dark(#6f6a63, #a39d94);
+	--flag: light-dark(#e8692c, #f08a4b);
 
 	--font: 'Geologica', system-ui, sans-serif;
 	--header: 56px;
-
+}
+:root[data-theme='light'] {
 	color-scheme: light;
 }
-
-@media (prefers-color-scheme: dark) {
-	:root {
-		--bg: #171513;
-		--fg: #ece7df;
-		--hero: #2a2622;
-		--on-hero: #f1ece4;
-		--accent: #f08a4b;
-		--answer: #f5a06a;
-		--field: #2a211b;
-		--hairline: #34302b;
-		--muted: #a39d94;
-		--flag: #f08a4b;
-		color-scheme: dark;
+:root[data-theme='dark'] {
+	color-scheme: dark;
+}
+/* Папір — завжди світлий */
+@media print {
+	:root:root {
+		color-scheme: light;
 	}
 }
 
