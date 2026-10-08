@@ -23,10 +23,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Локальні робочі файли, у публічний репо не йдуть
-# ocr.md — розпізнаний текст книжки (авторське право)
-/ocr.md
-/ocr.swift
-/next-me.html
+/docs/plan-compare.md
 # скіли й MCP-конфіг — локальний тулінг
 /.agents/
 /.claude/
@@ -34,4 +31,3 @@ vite.config.ts.timestamp-*
 # Supabase CLI
 /supabase/.temp/
 /supabase/.branches/
-/docs/plan-compare.md
