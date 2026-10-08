@@ -9,17 +9,20 @@
 		event.preventDefault();
 		status = 'sending';
 		const error = await sendMagicLink(email.trim());
-
-		if (error?.status === 429) {
-			status = 'error';
-			message = 'Забагато спроб. Зачекай хвилину й спробуй ще раз.';
-		} else if (error?.name === 'AuthRetryableFetchError') {
-			status = 'error';
-			message = 'Немає зв’язку із сервером. Перевір інтернет і спробуй ще раз.';
-		} else {
-			// Однакова відповідь для будь-якої адреси: сторінка не підказує, хто має доступ
+		if (!error) {
 			status = 'sent';
+			return;
 		}
+
+		// Ховати причину немає сенсу: API Supabase і так повертає її у відповіді
+		status = 'error';
+		if (error.code === 'otp_disabled')
+			message = 'Ця адреса не має доступу. Перевір, чи вона точно збігається із заведеною в Supabase.';
+		else if (error.status === 429)
+			message = 'Забагато спроб. Безкоштовна пошта Supabase надсилає кілька листів на годину, зачекай і спробуй ще раз.';
+		else if (error.name === 'AuthRetryableFetchError')
+			message = 'Немає зв’язку із сервером. Перевір інтернет і спробуй ще раз.';
+		else message = `Не вдалося надіслати лист: ${error.message}`;
 	}
 </script>
 
@@ -31,7 +34,7 @@
 	<h1>Вхід</h1>
 
 	{#if status === 'sent'}
-		<p>Якщо ця адреса має доступ, лист уже в дорозі. Відкрий посилання з нього: воно діє годину.</p>
+		<p>Лист надіслано на <b>{email.trim()}</b>. Відкрий посилання з нього: воно діє годину. Немає листа — глянь у «Спам».</p>
 		<button type="button" onclick={() => (status = 'idle')}>Надіслати ще раз</button>
 	{:else}
 		<form onsubmit={submit}>
