@@ -1,10 +1,26 @@
 <script lang="ts">
+	import { dev } from '$app/env';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { auth, signOut } from '#lib/auth.svelte.js';
 	import { INTRO, PLAN, SCALE, STATEMENT, SWOT, matrixKey } from '#lib/plan.js';
 	import type { Answers, Field } from '#lib/plan.js';
 	import { loadAnswers, supabase } from '#lib/supabase.js';
+	import Switcher from '#lib/prototype-form/Switcher.svelte';
+	import VariantB from '#lib/prototype-form/VariantB.svelte';
+	import VariantC from '#lib/prototype-form/VariantC.svelte';
+	import VariantD from '#lib/prototype-form/VariantD.svelte';
+
+	// ПРОТОТИП: варіанти вигляду бланка через ?variant= (лише в dev).
+	// У прототипі нічого не зберігається, щоб сирий варіант не зіпсував справжні відповіді.
+	const VARIANTS = [
+		{ key: 'A', name: 'Одна сторінка (зараз)' },
+		{ key: 'B', name: 'Майстер по розділах' },
+		{ key: 'C', name: 'Зміст зі статусом' },
+		{ key: 'D', name: 'Одне питання за раз' }
+	];
+	const variant = $derived(dev ? page.url.searchParams.get('variant') : null);
 
 	let answers = $state<Answers>({});
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -22,6 +38,7 @@
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
 	function edited() {
+		if (variant) return;
 		edits++;
 		status = 'saving';
 		clearTimeout(timer);
@@ -76,7 +93,7 @@
 <header>
 	<span class="who">{auth.session?.user.email}</span>
 	<span role="status" class={['status', status]}>
-		{#if status === 'saving'}Зберігаю…{:else if status === 'saved'}Збережено{:else if status === 'error'}Не збережено{/if}
+		{#if variant}Прототип: не зберігається{:else if status === 'saving'}Зберігаю…{:else if status === 'saved'}Збережено{:else if status === 'error'}Не збережено{/if}
 	</span>
 	{#if status === 'error'}
 		<button type="button" onclick={save}>Повторити</button>
@@ -85,6 +102,21 @@
 	<button type="button" onclick={async () => (await flush()) && signOut()}>Вийти</button>
 </header>
 
+{#if variant && variant !== 'A'}
+	{#await loading}
+		<main><p>Завантаження…</p></main>
+	{:then}
+		{#if variant === 'B'}
+			<VariantB {field} {answers} />
+		{:else if variant === 'C'}
+			<VariantC {field} {answers} />
+		{:else if variant === 'D'}
+			<VariantD {field} {answers} />
+		{/if}
+	{:catch error}
+		<main><p role="alert">Не вдалося завантажити бланк: {error.message}</p></main>
+	{/await}
+{:else}
 <main>
 	<h1>План перемоги</h1>
 	<p>{INTRO}</p>
@@ -119,6 +151,11 @@
 		<p role="alert">Не вдалося завантажити бланк: {error.message}</p>
 	{/await}
 </main>
+{/if}
+
+{#if dev}
+	<Switcher variants={VARIANTS} current={variant ?? 'A'} />
+{/if}
 
 {#snippet field(f: Field)}
 	{#if f.type === 'note'}
