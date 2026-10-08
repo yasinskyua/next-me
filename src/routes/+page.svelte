@@ -1,19 +1,19 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { auth, signOut } from '#lib/auth.svelte.js';
-	import { INTRO, PLAN, SCALE, STATEMENT, SWOT, blankAnswers, matrixKey, merge } from '#lib/plan.js';
+	import { INTRO, PLAN, SCALE, STATEMENT, SWOT, matrixKey } from '#lib/plan.js';
 	import type { Answers, Field } from '#lib/plan.js';
-	import { supabase } from '#lib/supabase.js';
+	import { loadAnswers, supabase } from '#lib/supabase.js';
 
 	let answers = $state<Answers>({});
 	let status = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
 	let problem = $state('');
 
 	// Форма з'являється лише після завантаження: інакше автозбереження затерло б базу порожнім бланком
-	const loading = (async () => {
-		const { data, error } = await supabase.from('plans').select('answers').maybeSingle();
-		if (error) throw error;
-		answers = merge(blankAnswers(PLAN), data?.answers);
-	})();
+	const loading = loadAnswers().then((loaded) => {
+		answers = loaded;
+	});
 
 	// Автозбереження після паузи в наборі. Правки, зроблені під час запису, підуть наступним колом.
 	let edits = 0;
@@ -50,9 +50,16 @@
 		status = 'saved';
 	}
 
-	async function leave() {
+	// Перед виходом чи переходом на карту дописуємо незбережене
+	async function flush() {
 		if (saved < edits) await save();
-		if (saved === edits) signOut();
+		return saved === edits;
+	}
+
+	async function toMap(e: MouseEvent) {
+		if (saved === edits) return;
+		e.preventDefault();
+		if (await flush()) goto(resolve('/map'));
 	}
 
 	const unsaved = () => status === 'saving' || status === 'error';
@@ -74,7 +81,8 @@
 	{#if status === 'error'}
 		<button type="button" onclick={save}>Повторити</button>
 	{/if}
-	<button type="button" onclick={leave}>Вийти</button>
+	<a href={resolve('/map')} onclick={toMap}>План-карта</a>
+	<button type="button" onclick={async () => (await flush()) && signOut()}>Вийти</button>
 </header>
 
 <main>
