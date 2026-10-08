@@ -34,3 +34,4 @@ vite.config.ts.timestamp-*
 # Supabase CLI
 /supabase/.temp/
 /supabase/.branches/
+/docs/plan-compare.md
