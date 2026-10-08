@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { auth, signOut } from '#lib/auth.svelte.js';
-	import { INTRO, PLAN, SCALE, STATEMENT, SWOT, matrixKey } from '#lib/plan.js';
+	import { INTRO, PLAN, SCALE, STATEMENT, SWOT, matrixKey, partStatus } from '#lib/plan.js';
 	import type { Answers, Field } from '#lib/plan.js';
 	import { loadAnswers, supabase } from '#lib/supabase.js';
 
@@ -63,6 +63,29 @@
 	}
 
 	const unsaved = () => status === 'saving' || status === 'error';
+
+	// Зміст: розділи з якорями і скільки в кожному заповнено
+	const parts = PLAN.flatMap((step) => step.parts.map((part) => ({ step, part, id: `part-${part.num ?? step.n}` })));
+	type TocPart = (typeof parts)[number];
+	let hideDone = $state(false);
+
+	const title = (p: TocPart) => `${p.part.num ? `${p.part.num}. ` : ''}${p.part.title}`;
+	const complete = (p: TocPart) => {
+		const s = partStatus(p.part, answers);
+		return s.done === s.total;
+	};
+	const badge = (p: TocPart) => {
+		const s = partStatus(p.part, answers);
+		return s.done === s.total ? '✓' : `${s.done}/${s.total}`;
+	};
+	const total = parts.reduce((n, p) => n + partStatus(p.part, {}).total, 0);
+	const done = $derived(parts.reduce((n, p) => n + partStatus(p.part, answers).done, 0));
+	const firstEmpty = $derived(parts.find((p) => !complete(p)));
+
+	function jump(e: Event & { currentTarget: HTMLSelectElement }) {
+		document.getElementById(e.currentTarget.value)?.scrollIntoView();
+		e.currentTarget.value = '';
+	}
 </script>
 
 <svelte:window onbeforeunload={(e) => unsaved() && e.preventDefault()} />
@@ -85,40 +108,73 @@
 	<button type="button" onclick={async () => (await flush()) && signOut()}>Вийти</button>
 </header>
 
-<main>
-	<h1>План перемоги</h1>
-	<p>{INTRO}</p>
+<div class="layout">
+	<aside>
+		{#await loading then}
+			<p class="total">Заповнено <b>{done}</b> з {total}</p>
+			<progress value={done} max={total}></progress>
+			{#if firstEmpty}
+				<a class="next" href="#{firstEmpty.id}">Перший незаповнений: {title(firstEmpty)}</a>
+			{:else}
+				<p class="next">Усе заповнено ✓</p>
+			{/if}
 
-	{#if status === 'error'}
-		<p role="alert">Не вдалося зберегти: {problem}. Відповіді лишаються на сторінці, натисни «Повторити».</p>
-	{/if}
-
-	<nav aria-label="Кроки">
-		{#each PLAN as step (step.n)}
-			<a href="#step-{step.n}">{step.n}. {step.title}</a>
-		{/each}
-	</nav>
-
-	{#await loading}
-		<p>Завантаження…</p>
-	{:then}
-		<form oninput={edited} onsubmit={(e) => e.preventDefault()}>
-			{#each PLAN as step (step.n)}
-				<section id="step-{step.n}">
-					<h2>Крок {step.n}. {step.title}</h2>
-					{#each step.parts as part (part.title)}
-						<h3>{part.num ? `${part.num}. ` : ''}{part.title}</h3>
-						{#each part.fields as f (f.type === 'note' ? f.text : f.id)}
-							{@render field(f)}
+			<label class="hide"><input type="checkbox" bind:checked={hideDone} /> Сховати заповнені</label>
+			<ul class="toc">
+				{#each PLAN as step (step.n)}
+					{@const visible = parts.filter((p) => p.step === step && !(hideDone && complete(p)))}
+					{#if visible.length}
+						<li class="step">Крок {step.n}. {step.title}</li>
+						{#each visible as p (p.id)}
+							<li>
+								<a href="#{p.id}">
+									<span>{title(p)}</span>
+									<span class={['badge', { ok: complete(p) }]}>{badge(p)}</span>
+								</a>
+							</li>
 						{/each}
-					{/each}
-				</section>
-			{/each}
-		</form>
-	{:catch error}
-		<p role="alert">Не вдалося завантажити бланк: {error.message}</p>
-	{/await}
-</main>
+					{/if}
+				{/each}
+			</ul>
+
+			<select class="mobile" aria-label="Перейти до розділу" onchange={jump}>
+				<option value="">Перейти до розділу…</option>
+				{#each parts as p (p.id)}
+					<option value={p.id}>{badge(p)} · {title(p)}</option>
+				{/each}
+			</select>
+		{/await}
+	</aside>
+
+	<main>
+		<h1>План перемоги</h1>
+		<p>{INTRO}</p>
+
+		{#if status === 'error'}
+			<p role="alert">Не вдалося зберегти: {problem}. Відповіді лишаються на сторінці, натисни «Повторити».</p>
+		{/if}
+
+		{#await loading}
+			<p>Завантаження…</p>
+		{:then}
+			<form oninput={edited} onsubmit={(e) => e.preventDefault()}>
+				{#each PLAN as step (step.n)}
+					<section id="step-{step.n}">
+						<h2>Крок {step.n}. {step.title}</h2>
+						{#each step.parts as part (part.title)}
+							<h3 id="part-{part.num ?? step.n}">{part.num ? `${part.num}. ` : ''}{part.title}</h3>
+							{#each part.fields as f (f.type === 'note' ? f.text : f.id)}
+								{@render field(f)}
+							{/each}
+						{/each}
+					</section>
+				{/each}
+			</form>
+		{:catch error}
+			<p role="alert">Не вдалося завантажити бланк: {error.message}</p>
+		{/await}
+	</main>
+</div>
 
 {#snippet field(f: Field)}
 	{#if f.type === 'note'}
@@ -246,12 +302,104 @@
 		color: #c62828;
 		opacity: 1;
 	}
-	nav {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 16px;
+	.layout {
+		display: grid;
+		grid-template-columns: 16rem minmax(0, 40rem);
+		justify-content: center;
+		gap: 40px;
+		padding: 0 16px;
 	}
-	section {
+	.layout main {
+		margin: 0;
+		padding: 32px 0 64px;
+	}
+	aside {
+		position: sticky;
+		top: 56px;
+		align-self: start;
+		max-height: calc(100vh - 56px);
+		overflow-y: auto;
+		padding: 32px 0 16px;
+	}
+	.total {
+		margin: 0 0 4px;
+	}
+	progress {
+		width: 100%;
+	}
+	.next {
+		display: block;
+		margin: 8px 0;
+		font-size: 0.875rem;
+	}
+	.hide {
+		display: flex;
+		gap: 6px;
+		margin: 12px 0;
+		font-size: 0.875rem;
+	}
+	.toc {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.toc li + li {
+		margin-top: 0;
+	}
+	.step {
+		margin: 16px 0 4px;
+		font-size: 0.75rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		opacity: 0.6;
+	}
+	.toc a {
+		display: flex;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 4px 8px;
+		border-radius: 6px;
+		color: inherit;
+		font-size: 0.9375rem;
+		text-decoration: none;
+	}
+	.toc a:hover {
+		background: color-mix(in srgb, CanvasText 8%, transparent);
+	}
+	.badge {
+		flex: none;
+		font-size: 0.8125rem;
+		opacity: 0.6;
+	}
+	.badge.ok {
+		color: #2e7d32;
+		opacity: 1;
+	}
+	.mobile {
+		display: none;
+		width: 100%;
+	}
+	@media (max-width: 800px) {
+		.layout {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 0;
+		}
+		aside {
+			position: static;
+			max-height: none;
+			padding-bottom: 0;
+		}
+		.toc,
+		.hide {
+			display: none;
+		}
+		.mobile {
+			display: block;
+		}
+	}
+	section,
+	h3 {
 		scroll-margin-top: 56px;
 	}
 	h2 {

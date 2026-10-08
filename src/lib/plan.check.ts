@@ -1,6 +1,6 @@
-// Самоперевірка злиття відповідей: node src/lib/plan.check.ts
+// Самоперевірка відповідей: злиття зі збереженим і статус розділів. node src/lib/plan.check.ts
 import assert from 'node:assert/strict';
-import { PLAN, blankAnswers, merge } from './plan.ts';
+import { PLAN, blankAnswers, merge, partStatus } from './plan.ts';
 
 const blank = blankAnswers(PLAN);
 assert.deepEqual(merge(blank, null), blank, 'нового користувача чекає порожній бланк');
@@ -23,4 +23,10 @@ assert.deepEqual(m.skills['Комунікації / Слухати й чути']
 assert.equal(m.worth, '', 'чужий тип → порожнє');
 assert.equal(m.gone, 'поле, якого вже немає в бланку', 'старі дані не губляться');
 assert.equal(m.stmt.name, '');
+const swot = PLAN[1].parts[0]; // 2.1: SWOT, так/ні, тексти, дві заяви
+assert.deepEqual(partStatus(swot, blank), { done: 0, total: 13 }, 'порожній бланк — нічого не заповнено');
+assert.deepEqual(partStatus(swot, { ...blank, swot: { ...blank.swot, o: ' ' } }), { done: 0, total: 13 }, 'пробіли не рахуються');
+assert.equal(partStatus(swot, m).done, 1, 'SWOT з одним квадратом — заповнене поле');
+const skills = PLAN[2].parts[1]; // 3.2: таблиця навичок
+assert.equal(partStatus(skills, m).done, 1, 'одна галочка в таблиці — поле заповнене');
 console.log('plan.check ok');

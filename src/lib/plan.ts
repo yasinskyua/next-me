@@ -188,3 +188,16 @@ export function merge(blank: unknown, saved: unknown): Answers[string] {
 	}
 	return typeof saved === typeof blank ? saved : blank;
 }
+
+// Поле заповнене, якщо в ньому є хоч щось: текст, галочка, оцінка
+const some = (v: unknown): boolean =>
+	typeof v === 'string' ? v.trim() !== ''
+	: typeof v === 'boolean' ? v
+	: Array.isArray(v) ? v.some(some)
+	: v && typeof v === 'object' ? Object.values(v).some(some)
+	: false;
+
+export function partStatus(part: Part, answers: Answers) {
+	const questions = part.fields.filter((f) => f.type !== 'note');
+	return { done: questions.filter((f) => some(answers[f.id])).length, total: questions.length };
+}
