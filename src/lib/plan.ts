@@ -149,3 +149,42 @@ export const PLAN: Step[] = [
 		] },
 	] },
 ];
+
+// --- Відповіді: plans.answers = { [id поля]: значення } ---
+
+// any: форма значення залежить від типу поля (рядок, масив, об'єкт)
+export type Answers = Record<string, any>;
+
+export const matrixKey = (group: string | undefined, item: string) => (group ? `${group} / ${item}` : item);
+
+function blank(f: Exclude<Field, { type: 'note' }>): unknown {
+	switch (f.type) {
+		case 'text': case 'choice': case 'date': return '';
+		case 'checklist': return [];
+		case 'top3': return ['', '', ''];
+		case 'todo': return Array(f.count).fill('');
+		case 'swot': return { s: '', w: '', o: '', t: '' };
+		case 'statement': return { name: '', date: '', domain: '' };
+		case 'matrix': return Object.fromEntries(f.groups.flatMap((g) =>
+			g.items.map((item) => [matrixKey(g.name, item), { on: false, score: '', prio: '' }])));
+	}
+}
+
+export const blankAnswers = (plan: Step[]): Answers => Object.fromEntries(
+	plan.flatMap((s) => s.parts.flatMap((p) => p.fields.flatMap((f) => (f.type === 'note' ? [] : [[f.id, blank(f)]])))));
+
+// Збережене лягає на порожній бланк: нові поля отримують порожні значення,
+// а ключі, яких у бланку вже немає (перейменований пункт), лишаються в базі.
+export function merge(blank: unknown, saved: unknown): Answers[string] {
+	if (Array.isArray(blank)) {
+		if (!Array.isArray(saved)) return blank;
+		return blank.length ? [...blank.map((b, i) => merge(b, saved[i])), ...saved.slice(blank.length)] : saved;
+	}
+	if (blank && typeof blank === 'object') {
+		if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return blank;
+		const out: Answers = { ...saved };
+		for (const [k, b] of Object.entries(blank)) out[k] = merge(b, (saved as Answers)[k]);
+		return out;
+	}
+	return typeof saved === typeof blank ? saved : blank;
+}
