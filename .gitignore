@@ -1,0 +1,36 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Локальні робочі файли, у публічний репо не йдуть
+# ocr.md — розпізнаний текст книжки (авторське право)
+/ocr.md
+/ocr.swift
+/next-me.html
+# скіли й MCP-конфіг — локальний тулінг
+/.agents/
+/.claude/
+/.mcp.json
+# Supabase CLI
+/supabase/.temp/
+/supabase/.branches/
