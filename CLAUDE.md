@@ -25,7 +25,3 @@
 - Налаштування входу правити в `supabase/config.toml`, застосовувати `supabase config diff` → `supabase config push`.
   `[auth.email] enable_signup` — це вмикач провайдера пошти, не реєстрації: лишати `true`.
 - У фронтенді лише publishable-ключ. Секретний / service_role — ніколи.
-
-## Локальні файли
-
-`docs/plan-compare.md` — лише локально: не комітити, не цитувати, не переносити в код.
