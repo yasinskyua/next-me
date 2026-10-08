@@ -1,5 +1,6 @@
 import type { AuthError, Session } from '@supabase/supabase-js';
 import { resolve } from '$app/paths';
+import { DEMO, DEMO_SESSION } from './demo.js';
 import { supabase } from './supabase';
 
 // Модульний стан тут безпечний: SSR вимкнено, кожна вкладка — один користувач
@@ -8,6 +9,11 @@ class Auth {
 	ready = $state(false);
 
 	constructor() {
+		if (DEMO) {
+			this.session = DEMO_SESSION;
+			this.ready = true;
+			return;
+		}
 		// INITIAL_SESSION приходить одразу, уже з сесією з посилання в листі, якщо вона є
 		supabase.auth.onAuthStateChange((_event, session) => {
 			this.session = session;
@@ -19,6 +25,10 @@ class Auth {
 export const auth = new Auth();
 
 export async function sendMagicLink(email: string): Promise<AuthError | null> {
+	if (DEMO) {
+		auth.session = DEMO_SESSION;
+		return null;
+	}
 	const { error } = await supabase.auth.signInWithOtp({
 		email,
 		options: {
@@ -30,4 +40,7 @@ export async function sendMagicLink(email: string): Promise<AuthError | null> {
 	return error;
 }
 
-export const signOut = () => supabase.auth.signOut();
+export async function signOut() {
+	if (DEMO) auth.session = null;
+	else await supabase.auth.signOut();
+}

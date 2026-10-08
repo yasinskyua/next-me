@@ -21,6 +21,7 @@ SvelteKit 3 (статичний SPA) на GitHub Pages + Supabase (Postgres з R
 cp .env.example .env.local   # заповнити значеннями з Supabase
 npm install
 npm run dev
+npm run demo                 # без входу й бази: вигадані відповіді в пам'яті, localhost:5174
 ```
 
 ## Supabase (один раз)
