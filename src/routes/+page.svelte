@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Pledge from '#lib/Pledge.svelte';
@@ -97,10 +98,14 @@
 			rail.scrollTop = item.offsetTop - rail.clientHeight / 3;
 	}
 
-	// Бланк з'являється після завантаження, тож до якоря з адреси (/#step-2 з план-карти) доводимо самі
+	// Бланк з'являється після завантаження, тож до якоря з адреси (/#step-2 з план-карти) доводимо самі.
+	// untrack: лише раз при появі форми. Інакше вкладення стежило б за `current` і після кожного
+	// прокручування знову стрибало б до якоря — сторінка «не прокручувалась».
 	function arrived() {
-		if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
-		spy();
+		untrack(() => {
+			if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+			spy();
+		});
 	}
 
 	const onscroll = () => {
